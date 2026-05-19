@@ -70,32 +70,38 @@ function totalSkill(team: PresentPlayer[]): number {
 }
 
 function score(a: Assignment): number {
-  // Lower = better. Components are weighted so skill balance dominates; size
-  // balance comes next; "weakest player" spreading and colour affinity act as
-  // tiebreakers.
+  // Lower = better. The fundamental insight is that **per-level distribution
+  // matters more than abstract sum-of-skill-levels**: a team with three
+  // skill-3s and one skill-1 is dominant even if the total skill happens to
+  // match the other team's. So we treat the spread of skill-1 and skill-3
+  // players as first-class concerns, weighted higher than the total-skill
+  // imbalance.
   //
-  //  - Skill spread   ×100  (each unit ≈ 1 total skill point of imbalance)
-  //  - Size spread    × 80
-  //  - Skill-1 spread × 30  (clump of weak players on a single team)
-  //  - Affinity       × −2  (max single-player swing is 10 points → −20)
-  //  - Illegal        ×10000 (defensive; never produced by construction)
+  //  - Strong (skill-3) spread ×100  (≥2 strong players on one team is bad)
+  //  - Weak (skill-1) spread   ×100  (clumped weak players is bad)
+  //  - Size spread             × 80  (uneven team sizes are bad)
+  //  - Total skill spread      × 30  (tiebreaker after distribution)
+  //  - Affinity                × −2  (max single-player swing 10 → −20)
+  //  - Illegal                 ×10000 (defensive; never produced)
   //
-  // Weights are intentionally lexicographic: a single point of total-skill
-  // imbalance (100) can never be justified by any gain in size, skill-1
-  // spread, or colour affinity. So colour preference / weak-player spread
-  // only steer among solutions that are already skill-balanced.
+  // With these weights, the algorithm will accept up to ~3 points of total
+  // skill imbalance (3 × 30 = 90) to fix a 1-unit skill-1 or skill-3 spread
+  // (gain 100). With 4 skill-3 players across 2 teams, the algorithm always
+  // produces a 2-2 split.
   const skills = a.teams.map(totalSkill);
   const sizes = a.teams.map((t) => t.length);
   const skillSpread = Math.max(...skills) - Math.min(...skills);
   const sizeSpread = Math.max(...sizes) - Math.min(...sizes);
 
-  // Count of skill-1 ("weakest") players per team. We prefer to spread them
-  // out so no team is stuck with two or three weak players. With our roster
-  // there are at most 3 skill-1s, so the ideal spread is 1-1-1 → 0.
   const weakCounts = a.teams.map(
     (t) => t.filter((p) => p.skill === 1).length
   );
+  const strongCounts = a.teams.map(
+    (t) => t.filter((p) => p.skill === 3).length
+  );
   const weakSpread = Math.max(...weakCounts) - Math.min(...weakCounts);
+  const strongSpread =
+    Math.max(...strongCounts) - Math.min(...strongCounts);
 
   let illegal = 0;
   let affinity = 0;
@@ -109,9 +115,10 @@ function score(a: Assignment): number {
 
   return (
     illegal * 10000 +
-    skillSpread * 100 +
+    strongSpread * 100 +
+    weakSpread * 100 +
     sizeSpread * 80 +
-    weakSpread * 30 -
+    skillSpread * 30 -
     affinity * 2
   );
 }
