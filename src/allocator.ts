@@ -120,10 +120,10 @@ function clone(a: Assignment): Assignment {
   return { teams: a.teams.map((t) => [...t]) };
 }
 
-function targetSizes(n: number): number[] {
-  const base = Math.floor(n / 3);
-  const remainder = n - base * 3;
-  const sizes = [base, base, base];
+function targetSizes(n: number, teamCount: number): number[] {
+  const base = Math.floor(n / teamCount);
+  const remainder = n - base * teamCount;
+  const sizes = Array(teamCount).fill(base) as number[];
   for (let i = 0; i < remainder; i++) sizes[i]++;
   return sizes;
 }
@@ -134,15 +134,15 @@ function targetSizes(n: number): number[] {
  *
  * This always respects `canAssign` so the seed is feasible.
  */
-function greedySeed(players: PresentPlayer[]): Assignment {
+function greedySeed(players: PresentPlayer[], teamCount: number): Assignment {
   const sorted = [...players].sort((a, b) => b.skill - a.skill);
-  const teams: PresentPlayer[][] = [[], [], []];
-  const sizes = targetSizes(sorted.length);
+  const teams: PresentPlayer[][] = Array.from({ length: teamCount }, () => []);
+  const sizes = targetSizes(sorted.length, teamCount);
 
   for (const p of sorted) {
     let bestIdx = -1;
     let bestCost = Infinity;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < teamCount; i++) {
       if (!canAssign(p.vest, TEAM_COLORS[i])) continue;
       const sizeOverTarget = Math.max(0, teams[i].length + 1 - sizes[i]);
       const cost = totalSkill(teams[i]) + sizeOverTarget * 50;
@@ -153,7 +153,8 @@ function greedySeed(players: PresentPlayer[]): Assignment {
     }
     if (bestIdx < 0) {
       // Should be unreachable, but place on first legal team if it ever is.
-      bestIdx = TEAM_COLORS.findIndex((c) => canAssign(p.vest, c));
+      const slice = TEAM_COLORS.slice(0, teamCount);
+      bestIdx = slice.findIndex((c) => canAssign(p.vest, c));
       if (bestIdx < 0) bestIdx = 0; // last-resort fallback
     }
     teams[bestIdx].push(p);
@@ -172,12 +173,13 @@ function refine(start: Assignment, iterations = 4000): Assignment {
   let cur = clone(best);
   let curScore = bestScore;
 
-  const sizes = targetSizes(cur.teams.flat().length);
+  const teamCount = cur.teams.length;
+  const sizes = targetSizes(cur.teams.flat().length, teamCount);
 
   for (let i = 0; i < iterations; i++) {
-    const a = Math.floor(Math.random() * 3);
-    let b = Math.floor(Math.random() * 3);
-    if (b === a) b = (b + 1) % 3;
+    const a = Math.floor(Math.random() * teamCount);
+    let b = Math.floor(Math.random() * teamCount);
+    if (b === a) b = (b + 1) % teamCount;
 
     if (cur.teams[a].length === 0 || cur.teams[b].length === 0) continue;
 
@@ -248,10 +250,17 @@ function buildResult(a: Assignment): AllocatedTeam[] {
  * Try multiple random seeds (greedy start + a few shuffled starts) and keep
  * the best. Re-rolling the same input set still produces some variation so
  * the user can ask for an alternative split.
+ *
+ * `teamCount` is 2 or 3. With 2 teams we use only red and yellow (the two
+ * vest teams) — there's no "no-vest" team. The caller decides the count
+ * (typically 2 for ≤10 players, 3 otherwise).
  */
-export function allocateTeams(players: PresentPlayer[]): AllocatedTeam[] {
+export function allocateTeams(
+  players: PresentPlayer[],
+  teamCount: 2 | 3 = 3
+): AllocatedTeam[] {
   if (players.length === 0) {
-    return TEAM_COLORS.map((c) => ({
+    return TEAM_COLORS.slice(0, teamCount).map((c) => ({
       color: c,
       label: TEAM_LABEL[c],
       players: [],
@@ -259,12 +268,12 @@ export function allocateTeams(players: PresentPlayer[]): AllocatedTeam[] {
     }));
   }
 
-  let best = refine(greedySeed(players));
+  let best = refine(greedySeed(players, teamCount));
   let bestScore = score(best);
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const shuffled = [...players].sort(() => Math.random() - 0.5);
-    const candidate = refine(greedySeed(shuffled));
+    const candidate = refine(greedySeed(shuffled, teamCount));
     const sc = score(candidate);
     if (sc < bestScore) {
       best = candidate;

@@ -94,9 +94,16 @@ export function Teams() {
     });
   };
 
+  const presentCount = present.length;
+  // ≤10 players → 2 teams (red + yellow); 11+ → 3 teams (red + yellow +
+  // no-vest). Threshold matches the user's rule: small turn-outs aren't
+  // worth splitting three ways.
+  const teamCount: 2 | 3 = presentCount <= 10 ? 2 : 3;
+  const minPlayers = teamCount;
+
   const allocate = () => {
     haptic([20, 40, 20]);
-    setResult(allocateTeams(present));
+    setResult(allocateTeams(present, teamCount));
     requestAnimationFrame(() => {
       document.getElementById("teams-result")?.scrollIntoView({
         behavior: "smooth",
@@ -104,8 +111,6 @@ export function Teams() {
       });
     });
   };
-
-  const presentCount = present.length;
 
   return (
     <div>
@@ -176,11 +181,11 @@ export function Teams() {
         <button
           className="btn primary lg full"
           onClick={allocate}
-          disabled={presentCount < 3}
+          disabled={presentCount < minPlayers}
         >
-          {presentCount < 3
-            ? `Trenger minst 3 spillere`
-            : `Lag ${presentCount} spillere → 3 lag`}
+          {presentCount < minPlayers
+            ? `Trenger minst ${minPlayers} spillere`
+            : `Lag ${presentCount} spillere → ${teamCount} lag`}
         </button>
       </div>
 
@@ -193,7 +198,7 @@ export function Teams() {
             </button>
           </div>
 
-          <div className="teams-out">
+          <div className={`teams-out cols-${result.length}`}>
             {result.map((t) => {
               // The third team is the "no-vest" team. If anyone there is
               // wearing blue we show it as the blue team; otherwise it's
