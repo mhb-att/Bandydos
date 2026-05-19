@@ -149,6 +149,7 @@ function greedySeed(players: PresentPlayer[], teamCount: number): Assignment {
   for (const p of sorted) {
     let bestIdx = -1;
     let bestCost = Infinity;
+    let tieCount = 0;
     for (let i = 0; i < teamCount; i++) {
       if (!canAssign(p.vest, TEAM_COLORS[i])) continue;
       const sizeOverTarget = Math.max(0, teams[i].length + 1 - sizes[i]);
@@ -156,13 +157,18 @@ function greedySeed(players: PresentPlayer[], teamCount: number): Assignment {
       if (cost < bestCost) {
         bestCost = cost;
         bestIdx = i;
+        tieCount = 1;
+      } else if (cost === bestCost) {
+        // Reservoir-sample among tied teams so the seed isn't biased
+        // towards lower team indices (red over yellow over blue).
+        tieCount++;
+        if (Math.random() * tieCount < 1) bestIdx = i;
       }
     }
     if (bestIdx < 0) {
-      // Should be unreachable, but place on first legal team if it ever is.
       const slice = TEAM_COLORS.slice(0, teamCount);
       bestIdx = slice.findIndex((c) => canAssign(p.vest, c));
-      if (bestIdx < 0) bestIdx = 0; // last-resort fallback
+      if (bestIdx < 0) bestIdx = 0;
     }
     teams[bestIdx].push(p);
   }
@@ -173,12 +179,20 @@ function greedySeed(players: PresentPlayer[], teamCount: number): Assignment {
  * Optimise an assignment by repeatedly trying random swaps/moves and keeping
  * the change if the score improves. Illegal swaps (those that would violate
  * `canAssign`) are skipped outright so we never explore infeasible space.
+ *
+ * Reservoir sampling: when we land on a state whose score equals the current
+ * best, we replace `best` with probability 1/n (where n counts how many
+ * equally-good states we've seen). Over the whole loop this gives a
+ * uniformly-random choice among all the equally-optimal states we visited,
+ * which is what makes "Trekk på nytt" produce different splits each time
+ * even when the optimum is heavily under-determined.
  */
 function refine(start: Assignment, iterations = 4000): Assignment {
   let best = clone(start);
   let bestScore = score(best);
   let cur = clone(best);
   let curScore = bestScore;
+  let bestEquivCount = 1;
 
   const teamCount = cur.teams.length;
   const sizes = targetSizes(cur.teams.flat().length, teamCount);
@@ -225,11 +239,20 @@ function refine(start: Assignment, iterations = 4000): Assignment {
     }
 
     const newScore = score(cur);
-    if (newScore < curScore || (newScore === curScore && Math.random() < 0.15)) {
+    // Accept improvements unconditionally; accept equal-score moves more
+    // aggressively (~35%) so we wander the optimal plateau and gather many
+    // candidate solutions for the reservoir.
+    if (newScore < curScore || (newScore === curScore && Math.random() < 0.35)) {
       curScore = newScore;
       if (newScore < bestScore) {
         best = clone(cur);
         bestScore = newScore;
+        bestEquivCount = 1;
+      } else if (newScore === bestScore) {
+        bestEquivCount++;
+        if (Math.random() * bestEquivCount < 1) {
+          best = clone(cur);
+        }
       }
     } else {
       if (doMove) {
@@ -254,9 +277,12 @@ function buildResult(a: Assignment): AllocatedTeam[] {
 }
 
 /**
- * Try multiple random seeds (greedy start + a few shuffled starts) and keep
- * the best. Re-rolling the same input set still produces some variation so
- * the user can ask for an alternative split.
+ * Try multiple random seeds (greedy start + many shuffled starts) and keep
+ * the best. Re-rolling the same input set produces a different split every
+ * time: each attempt's `refine` reservoir-samples within the optimal
+ * plateau, and this outer loop reservoir-samples again across the per-
+ * attempt winners — so when several attempts find equally-optimal splits
+ * (which is the common case), we pick uniformly among them.
  *
  * `teamCount` is 2 or 3. With 2 teams we use only red and yellow (the two
  * vest teams) — there's no "no-vest" team. The caller decides the count
@@ -275,16 +301,27 @@ export function allocateTeams(
     }));
   }
 
+  // Run one attempt seeded with the deterministic greedy start, then a bunch
+  // of shuffled-start attempts. Reservoir-sample across all attempts so
+  // re-rolling produces variety.
   let best = refine(greedySeed(players, teamCount));
   let bestScore = score(best);
+  let bestEquivCount = 1;
 
-  for (let attempt = 0; attempt < 6; attempt++) {
+  const ATTEMPTS = 9;
+  for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const shuffled = [...players].sort(() => Math.random() - 0.5);
     const candidate = refine(greedySeed(shuffled, teamCount));
     const sc = score(candidate);
     if (sc < bestScore) {
       best = candidate;
       bestScore = sc;
+      bestEquivCount = 1;
+    } else if (sc === bestScore) {
+      bestEquivCount++;
+      if (Math.random() * bestEquivCount < 1) {
+        best = candidate;
+      }
     }
   }
 
