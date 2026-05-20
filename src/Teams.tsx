@@ -211,7 +211,7 @@ export function Teams({ result, setResult }: TeamsProps) {
               const isWhiteTeam =
                 t.color === "blue" && !t.players.some((p) => p.vest === "blue");
               const displayColor = isWhiteTeam ? "white" : t.color;
-              const displayLabel = isWhiteTeam ? "Hvite lag" : t.label;
+              const displayLabel = isWhiteTeam ? "Hvitt lag" : t.label;
               return (
               <div className="team" key={t.color} data-color={displayColor}>
                 <div className="team-head">

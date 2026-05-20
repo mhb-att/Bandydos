@@ -17,8 +17,8 @@ export interface AllocatedTeam {
 const TEAM_COLORS: TeamColor[] = ["red", "yellow", "blue"];
 
 const TEAM_LABEL: Record<TeamColor, string> = {
-  red: "Røde lag",
-  yellow: "Gule lag",
+  red: "Rødt lag",
+  yellow: "Gult lag",
   blue: "Blå lag",
 };
 

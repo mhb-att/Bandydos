@@ -123,8 +123,8 @@ export function computeStandings(
 }
 
 const NORWEGIAN_LABEL: Record<TeamColor | "tie", string> = {
-  red: "Røde lag",
-  yellow: "Gule lag",
+  red: "Rødt lag",
+  yellow: "Gult lag",
   blue: "Blå lag",
   tie: "Uavgjort",
 };
