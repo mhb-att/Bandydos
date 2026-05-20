@@ -470,6 +470,13 @@ button {
 .timer-display.phase-break .cycle-info .dot {
   background: var(--bd-blue);
 }
+.timer-display.paused .cycle-info .dot {
+  animation: none;
+  opacity: 0.55;
+}
+.timer-display.paused .timer-time {
+  opacity: 0.65;
+}
 
 @keyframes pulse-dot {
   0%, 100% { opacity: 0.4; }
@@ -580,8 +587,37 @@ button {
   background: var(--bd-yellow);
 }
 .color-dot.selected {
-  border-color: var(--bd-orange);
-  box-shadow: 0 0 0 2px rgba(255, 61, 31, 0.25);
+  /* The selection cue is a checkmark inside the dot plus a two-tone rim
+     (light inner, dark outer halo). Avoiding any orange/red border so
+     selection on the red colour stays visible. */
+  border-color: transparent;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.92),
+    0 0 0 2px rgba(0, 0, 0, 0.55);
+}
+.color-dot.selected[data-c="white"] {
+  /* On the white dot the inner white rim would be invisible — flip to a
+     dark inner rim + light outer halo so we still get clear separation. */
+  box-shadow:
+    inset 0 0 0 2px rgba(0, 0, 0, 0.7),
+    0 0 0 2px rgba(255, 255, 255, 0.32);
+}
+.color-dot.selected::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 12px;
+  border: solid #fff;
+  border-width: 0 2.5px 2.5px 0;
+  transform: translate(-55%, -65%) rotate(45deg);
+  pointer-events: none;
+}
+/* Light dots get a dark check so it's visible. */
+.color-dot.selected[data-c="white"]::after,
+.color-dot.selected[data-c="yellow"]::after {
+  border-color: #111;
 }
 .color-dot:disabled {
   opacity: 0.35;

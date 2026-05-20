@@ -118,8 +118,14 @@ function TimePartsInput({
 export function Timer() {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [phase, setPhase] = useState<Phase>("idle");
+  const [isPaused, setIsPaused] = useState(false);
   /** Wall-clock end time (ms epoch) of the current phase. */
   const endAtRef = useRef<number | null>(null);
+  /**
+   * Seconds remaining at the moment we paused. Restored to `endAtRef` (as a
+   * future timestamp) when the user resumes. `null` when not paused.
+   */
+  const pausedRemainingRef = useRef<number | null>(null);
   /** Re-render tick counter so the displayed time updates. */
   const [, setNow] = useState(0);
   const [round, setRound] = useState(1);
@@ -137,9 +143,9 @@ export function Timer() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
-  // Animation/render loop.
+  // Animation/render loop. Stops when idle or paused.
   useEffect(() => {
-    if (phase === "idle") return;
+    if (phase === "idle" || isPaused) return;
     let raf = 0;
     const loop = () => {
       const end = endAtRef.current;
@@ -165,7 +171,7 @@ export function Timer() {
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+  }, [phase, isPaused]);
 
   // Keep screen alive while the timer is running.
   const wakeRef = useRef<WakeLockSentinel | null>(null);
@@ -199,6 +205,8 @@ export function Timer() {
   const handlePhaseEnd = useCallback(() => {
     const ending = phaseRef.current;
     tickedSecondsRef.current = new Set();
+    // Skipping a phase while paused must un-pause so the next phase ticks.
+    pausedRemainingRef.current = null;
 
     if (ending === "round") {
       playRoundEndAlarm();
@@ -219,23 +227,45 @@ export function Timer() {
       endAtRef.current = Date.now() + settings.roundSec * 1000;
       setPhase("round");
     }
+    setIsPaused(false);
   }, [settings]);
 
   const start = useCallback(async () => {
     await unlockAudio();
     haptic(40);
     endAtRef.current = Date.now() + settings.roundSec * 1000;
+    pausedRemainingRef.current = null;
     tickedSecondsRef.current = new Set();
     setRound(1);
+    setIsPaused(false);
     setPhase("round");
   }, [settings]);
 
   const stop = useCallback(() => {
     haptic(30);
     endAtRef.current = null;
+    pausedRemainingRef.current = null;
     tickedSecondsRef.current = new Set();
+    setIsPaused(false);
     setPhase("idle");
   }, []);
+
+  const togglePause = useCallback(() => {
+    haptic(20);
+    if (isPaused) {
+      // Resume: restore endAt from the captured remaining seconds.
+      const remaining = pausedRemainingRef.current ?? 0;
+      endAtRef.current = Date.now() + remaining * 1000;
+      pausedRemainingRef.current = null;
+      setIsPaused(false);
+    } else {
+      // Pause: capture how much time was left on the current phase.
+      const end = endAtRef.current;
+      pausedRemainingRef.current = end == null ? 0 : Math.max(0, (end - Date.now()) / 1000);
+      endAtRef.current = null;
+      setIsPaused(true);
+    }
+  }, [isPaused]);
 
   const skipPhase = useCallback(() => {
     if (phase === "idle") return;
@@ -243,13 +273,16 @@ export function Timer() {
   }, [phase, handlePhaseEnd]);
 
   // Derived display values - computed on every render. The rAF loop above
-  // triggers re-renders ~60Hz while the timer is running.
-  const remaining =
-    phase === "idle" || endAtRef.current == null
-      ? phase === "break"
-        ? settings.breakSec
-        : settings.roundSec
-      : Math.max(0, (endAtRef.current - Date.now()) / 1000);
+  // triggers re-renders ~60Hz while the timer is running. When paused we
+  // freeze the displayed time at the captured `pausedRemainingRef`.
+  const remaining = (() => {
+    if (phase === "idle") return settings.roundSec;
+    if (isPaused) return pausedRemainingRef.current ?? 0;
+    if (endAtRef.current == null) {
+      return phase === "break" ? settings.breakSec : settings.roundSec;
+    }
+    return Math.max(0, (endAtRef.current - Date.now()) / 1000);
+  })();
 
   const totalForPhase = phase === "break" ? settings.breakSec : settings.roundSec;
   const progressPct =
@@ -257,13 +290,18 @@ export function Timer() {
       ? 0
       : Math.min(100, Math.max(0, (1 - remaining / totalForPhase) * 100));
 
-  const phaseLabel =
-    phase === "idle" ? "KLAR" : phase === "round" ? "RUNDE" : "PAUSE";
+  const phaseLabel = isPaused
+    ? "PAUSET"
+    : phase === "idle"
+      ? "KLAR"
+      : phase === "round"
+        ? "RUNDE"
+        : "PAUSE";
 
   return (
     <div>
       <div
-        className={`timer-display phase-${phase}`}
+        className={`timer-display phase-${phase}${isPaused ? " paused" : ""}`}
         aria-live="polite"
       >
         <div className={`phase-label ${phase !== "idle" ? "live" : ""} phase-${phase}`}>
@@ -280,27 +318,39 @@ export function Timer() {
         </div>
         {phase !== "idle" && (
           <div className="cycle-info">
-            <span className="dot" /> Auto-veksler runde / pause til du stopper
+            <span className="dot" />{" "}
+            {isPaused
+              ? "Trykk Fortsett for å gjenoppta"
+              : "Auto-veksler runde / pause til du stopper"}
           </div>
         )}
       </div>
 
-      <div className="controls">
-        {phase === "idle" ? (
+      {phase === "idle" ? (
+        <div className="controls">
           <button className="btn primary lg full" onClick={start}>
             Start timer
           </button>
-        ) : (
-          <>
+        </div>
+      ) : (
+        <>
+          <button
+            className="btn primary lg full"
+            onClick={togglePause}
+            aria-pressed={isPaused}
+          >
+            {isPaused ? "Fortsett" : "Pause"}
+          </button>
+          <div className="controls" style={{ marginTop: 10 }}>
             <button className="btn full lg" onClick={skipPhase}>
               Hopp over
             </button>
             <button className="btn danger full lg" onClick={stop}>
               Stopp
             </button>
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Innstillinger</h2>
