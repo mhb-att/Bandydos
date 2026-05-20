@@ -54,7 +54,7 @@ export function WinnerPromptOverlay({
           </button>
         </div>
         <p className="overlay-foot muted">
-          Pausen er stoppet til du svarer.
+          Svar før pausen er over — ellers blir kampen ikke regnet.
         </p>
       </div>
     </div>,

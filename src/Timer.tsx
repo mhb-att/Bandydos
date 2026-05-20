@@ -279,23 +279,25 @@ export function Timer({ teams }: TimerProps) {
     (justEndedRound: number) => {
       if (!teams) return;
       const { playing } = matchForRound(teams, justEndedRound);
-      // Auto-pause break so the user has time to answer; the break timer
-      // resumes when they tap a winner.
-      pausedRemainingRef.current =
-        endAtRef.current == null
-          ? settings.breakSec
-          : Math.max(0, (endAtRef.current - Date.now()) / 1000);
-      endAtRef.current = null;
-      setIsPaused(true);
+      // The break timer keeps running while the prompt is up. If no one
+      // answers in time, the prompt is auto-discarded when the break
+      // ends (see `handlePhaseEnd` below) and the match isn't recorded.
       setPendingPrompt({ round: justEndedRound, teams: playing });
     },
-    [teams, settings.breakSec]
+    [teams]
   );
 
   const handlePhaseEnd = useCallback(() => {
     const ending = phaseRef.current;
     tickedSecondsRef.current = new Set();
     pausedRemainingRef.current = null;
+    // Auto-discard any unanswered winner prompt when the phase changes.
+    // For breakSec > 0 this fires when the break ends — exactly the
+    // user's "if no one answers within the pause period, ignore the
+    // match" rule. For breakSec === 0 the prompt survives through the
+    // next round and is discarded when *that* round ends instead, so
+    // there's still a chance to answer.
+    setPendingPrompt(null);
 
     if (ending === "round") {
       playRoundEndAlarm();
@@ -306,9 +308,9 @@ export function Timer({ teams }: TimerProps) {
         setPhase("break");
         queuePromptIfNeeded(justEnded);
       } else {
-        // No break configured. We still want the winner prompt — pause
-        // entirely until the user records the result, then start the
-        // next round.
+        // No break configured: go straight to the next round. The prompt
+        // for the round that just ended sits on top of the running next
+        // round until the user answers (or that next round also ends).
         playBreakEndAlarm();
         setRound((r) => r + 1);
         endAtRef.current = Date.now() + settings.roundSec * 1000;
@@ -321,9 +323,8 @@ export function Timer({ teams }: TimerProps) {
       setRound((r) => r + 1);
       endAtRef.current = Date.now() + settings.roundSec * 1000;
       setPhase("round");
-      // No prompt on break-end (only on round-end).
-      setIsPaused(false);
     }
+    setIsPaused(false);
   }, [settings, queuePromptIfNeeded]);
 
   const start = useCallback(async () => {
@@ -366,20 +367,12 @@ export function Timer({ teams }: TimerProps) {
           teams: pendingPrompt.teams,
           outcome,
         };
-        // Important: keep the two state updates *outside* each other's
-        // updater functions. React StrictMode double-invokes updaters to
-        // detect impurity, so calling `setMatches` from inside another
-        // updater would record the match twice.
+        // Keep the two state updates outside each other's updater
+        // functions. React StrictMode double-invokes updaters to detect
+        // impurity, so nesting them would record the match twice.
         setMatches((prev) => [...prev, recorded]);
       }
       setPendingPrompt(null);
-      // Resume the break timer (or, if no break, the freshly-started next
-      // round) using whatever time we captured when we paused.
-      if (pausedRemainingRef.current != null) {
-        endAtRef.current = Date.now() + pausedRemainingRef.current * 1000;
-        pausedRemainingRef.current = null;
-      }
-      setIsPaused(false);
     },
     [pendingPrompt]
   );
