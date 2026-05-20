@@ -8,6 +8,11 @@ import {
 } from "./allocator";
 import { haptic } from "./audio";
 
+interface TeamsProps {
+  result: AllocatedTeam[] | null;
+  setResult: (r: AllocatedTeam[] | null) => void;
+}
+
 const STORAGE_KEY = "bandydos.teams.v1";
 
 interface PlayerState {
@@ -52,9 +57,8 @@ function loadState(): StateMap {
   }
 }
 
-export function Teams() {
+export function Teams({ result, setResult }: TeamsProps) {
   const [state, setState] = useState<StateMap>(() => loadState());
-  const [result, setResult] = useState<AllocatedTeam[] | null>(null);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

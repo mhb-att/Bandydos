@@ -818,6 +818,285 @@ button {
   color: var(--bd-text);
 }
 
+/* ---------- Match indicator (Timer view) ---------- */
+.match-indicator {
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  border-radius: var(--bd-radius);
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.match-indicator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+.match-indicator-label {
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--bd-text-muted);
+  font-weight: 700;
+  flex: 0 0 56px;
+}
+.match-indicator-row.muted-row .match-indicator-label {
+  color: rgba(168, 168, 168, 0.7);
+}
+.match-indicator-teams {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.match-vs {
+  font-size: 12px;
+  color: var(--bd-text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.match-team-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bd-surface-2);
+  border: 1px solid var(--bd-border);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.match-team-pill.ghost {
+  background: transparent;
+  color: var(--bd-text-muted);
+}
+.match-team-pill[data-color="red"] {
+  border-color: rgba(214, 58, 58, 0.55);
+}
+.match-team-pill[data-color="yellow"] {
+  border-color: rgba(232, 196, 58, 0.55);
+}
+.match-team-pill[data-color="blue"] {
+  border-color: rgba(58, 130, 214, 0.55);
+}
+
+.match-team-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--bd-text-muted);
+}
+.match-team-pill[data-color="red"] .match-team-swatch,
+.match-team-swatch[data-c="red"] {
+  background: var(--bd-red);
+}
+.match-team-pill[data-color="yellow"] .match-team-swatch,
+.match-team-swatch[data-c="yellow"] {
+  background: var(--bd-yellow);
+}
+.match-team-pill[data-color="blue"] .match-team-swatch,
+.match-team-swatch[data-c="blue"] {
+  background: var(--bd-blue);
+}
+
+/* ---------- Modal overlay (winner prompt + standings) ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  padding-top: calc(16px + var(--bd-safe-top));
+  padding-bottom: calc(16px + var(--bd-safe-bottom));
+  animation: overlay-in 0.2s ease;
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.overlay-card {
+  background: var(--bd-surface);
+  border: 1px solid var(--bd-border);
+  border-radius: var(--bd-radius);
+  padding: 22px 18px 18px 18px;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  animation: overlay-card-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.1);
+}
+@keyframes overlay-card-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.overlay-eyebrow {
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--bd-orange);
+  font-weight: 800;
+}
+.overlay-title {
+  margin: 4px 0 16px 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+.overlay-foot {
+  margin: 14px 0 0 0;
+  text-align: center;
+  font-size: 12px;
+}
+
+/* Winner prompt buttons */
+.winner-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.winner-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px;
+  min-height: 64px;
+  border-radius: var(--bd-radius-sm);
+  background: var(--bd-surface-2);
+  border: 1px solid var(--bd-border);
+  text-align: left;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--bd-text);
+  transition: transform 0.05s ease, background 0.15s ease;
+  touch-action: manipulation;
+}
+.winner-option:active {
+  transform: scale(0.98);
+}
+.winner-option .match-team-swatch {
+  width: 18px;
+  height: 18px;
+}
+.winner-option[data-color="red"] {
+  border-color: rgba(214, 58, 58, 0.55);
+}
+.winner-option[data-color="red"] .match-team-swatch {
+  background: var(--bd-red);
+}
+.winner-option[data-color="yellow"] {
+  border-color: rgba(232, 196, 58, 0.55);
+}
+.winner-option[data-color="yellow"] .match-team-swatch {
+  background: var(--bd-yellow);
+}
+.winner-option[data-color="blue"] {
+  border-color: rgba(58, 130, 214, 0.55);
+}
+.winner-option[data-color="blue"] .match-team-swatch {
+  background: var(--bd-blue);
+}
+.winner-option-tie {
+  justify-content: space-between;
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--bd-border);
+  color: var(--bd-text-muted);
+  font-size: 15px;
+}
+.winner-option-tie .winner-option-label {
+  font-weight: 800;
+  color: var(--bd-text);
+}
+.winner-option-sublabel {
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* Standings overlay */
+.standings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.standings-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "pos team points"
+    "pos record record";
+  align-items: center;
+  gap: 4px 12px;
+  padding: 12px 14px;
+  border-radius: var(--bd-radius-sm);
+  background: var(--bd-surface-2);
+  border: 1px solid var(--bd-border);
+}
+.standings-row[data-pos="0"] {
+  background: linear-gradient(180deg, rgba(255, 61, 31, 0.16), rgba(255, 61, 31, 0.04));
+  border-color: rgba(255, 61, 31, 0.45);
+}
+.standings-pos {
+  grid-area: pos;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--bd-text-muted);
+  align-self: center;
+}
+.standings-row[data-pos="0"] .standings-pos {
+  color: var(--bd-orange);
+}
+.standings-team {
+  grid-area: team;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.standings-name {
+  font-weight: 800;
+  font-size: 16px;
+}
+.standings-points {
+  grid-area: points;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.standings-points strong {
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.standings-points-suffix {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.standings-record {
+  grid-area: record;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
 /* utility */
 .kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

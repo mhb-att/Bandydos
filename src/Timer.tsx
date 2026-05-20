@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   haptic,
   playBreakEndAlarm,
@@ -6,8 +6,57 @@ import {
   playTick,
   unlockAudio,
 } from "./audio";
+import type { AllocatedTeam, TeamColor } from "./allocator";
+import {
+  type MatchResult,
+  type Outcome,
+  matchForRound,
+  teamLabel,
+} from "./match";
+import { StandingsOverlay, WinnerPromptOverlay } from "./MatchOverlays";
 
 type Phase = "idle" | "round" | "break";
+
+interface TimerProps {
+  teams: AllocatedTeam[] | null;
+}
+
+interface MatchIndicatorProps {
+  teams: AllocatedTeam[];
+  playing: [TeamColor, TeamColor];
+  bench: TeamColor | null;
+  round: number;
+}
+
+function MatchIndicator({ teams, playing, bench, round }: MatchIndicatorProps) {
+  return (
+    <div className="match-indicator" aria-label={`Runde ${round} oppsett`}>
+      <div className="match-indicator-row">
+        <span className="match-indicator-label">Spiller</span>
+        <span className="match-indicator-teams">
+          <span className="match-team-pill" data-color={playing[0]}>
+            <span className="match-team-swatch" />
+            {teamLabel(teams, playing[0])}
+          </span>
+          <span className="match-vs">vs</span>
+          <span className="match-team-pill" data-color={playing[1]}>
+            <span className="match-team-swatch" />
+            {teamLabel(teams, playing[1])}
+          </span>
+        </span>
+      </div>
+      {bench && (
+        <div className="match-indicator-row muted-row">
+          <span className="match-indicator-label">Hviler</span>
+          <span className="match-team-pill ghost" data-color={bench}>
+            <span className="match-team-swatch" />
+            {teamLabel(teams, bench)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface Settings {
   roundSec: number;
@@ -115,10 +164,26 @@ function TimePartsInput({
   );
 }
 
-export function Timer() {
+export function Timer({ teams }: TimerProps) {
   const [settings, setSettings] = useState<Settings>(() => loadSettings());
   const [phase, setPhase] = useState<Phase>("idle");
   const [isPaused, setIsPaused] = useState(false);
+
+  // Match-tracking state. `matches` accumulates results across the whole
+  // session (= until Stopp is pressed and standings are dismissed).
+  // `pendingPrompt` holds the just-finished match while we wait for the
+  // user to declare a winner; the timer is auto-paused while it's open.
+  const [matches, setMatches] = useState<MatchResult[]>([]);
+  const [pendingPrompt, setPendingPrompt] = useState<{
+    round: number;
+    teams: [TeamColor, TeamColor];
+  } | null>(null);
+  const [showStandings, setShowStandings] = useState(false);
+  // Snapshot of teams used to render standings even after `teams` changes
+  // (e.g. user tapped "Lag" and re-rolled while standings were open).
+  const [standingsTeams, setStandingsTeams] = useState<AllocatedTeam[] | null>(
+    null
+  );
   /** Wall-clock end time (ms epoch) of the current phase. */
   const endAtRef = useRef<number | null>(null);
   /**
@@ -202,23 +267,53 @@ export function Timer() {
     };
   }, [phase]);
 
+  // The match the user is currently playing. Captured via ref so that
+  // `handlePhaseEnd` can queue the winner prompt with the right teams even
+  // after we've already set the next round's phase.
+  const currentRoundRef = useRef(round);
+  useEffect(() => {
+    currentRoundRef.current = round;
+  }, [round]);
+
+  const queuePromptIfNeeded = useCallback(
+    (justEndedRound: number) => {
+      if (!teams) return;
+      const { playing } = matchForRound(teams, justEndedRound);
+      // Auto-pause break so the user has time to answer; the break timer
+      // resumes when they tap a winner.
+      pausedRemainingRef.current =
+        endAtRef.current == null
+          ? settings.breakSec
+          : Math.max(0, (endAtRef.current - Date.now()) / 1000);
+      endAtRef.current = null;
+      setIsPaused(true);
+      setPendingPrompt({ round: justEndedRound, teams: playing });
+    },
+    [teams, settings.breakSec]
+  );
+
   const handlePhaseEnd = useCallback(() => {
     const ending = phaseRef.current;
     tickedSecondsRef.current = new Set();
-    // Skipping a phase while paused must un-pause so the next phase ticks.
     pausedRemainingRef.current = null;
 
     if (ending === "round") {
       playRoundEndAlarm();
       haptic([220, 120, 220, 120, 220]);
+      const justEnded = currentRoundRef.current;
       if (settings.breakSec > 0) {
         endAtRef.current = Date.now() + settings.breakSec * 1000;
         setPhase("break");
+        queuePromptIfNeeded(justEnded);
       } else {
+        // No break configured. We still want the winner prompt — pause
+        // entirely until the user records the result, then start the
+        // next round.
         playBreakEndAlarm();
         setRound((r) => r + 1);
         endAtRef.current = Date.now() + settings.roundSec * 1000;
         setPhase("round");
+        queuePromptIfNeeded(justEnded);
       }
     } else if (ending === "break") {
       playBreakEndAlarm();
@@ -226,9 +321,10 @@ export function Timer() {
       setRound((r) => r + 1);
       endAtRef.current = Date.now() + settings.roundSec * 1000;
       setPhase("round");
+      // No prompt on break-end (only on round-end).
+      setIsPaused(false);
     }
-    setIsPaused(false);
-  }, [settings]);
+  }, [settings, queuePromptIfNeeded]);
 
   const start = useCallback(async () => {
     await unlockAudio();
@@ -238,6 +334,10 @@ export function Timer() {
     tickedSecondsRef.current = new Set();
     setRound(1);
     setIsPaused(false);
+    setMatches([]);
+    setPendingPrompt(null);
+    setShowStandings(false);
+    setStandingsTeams(null);
     setPhase("round");
   }, [settings]);
 
@@ -247,8 +347,62 @@ export function Timer() {
     pausedRemainingRef.current = null;
     tickedSecondsRef.current = new Set();
     setIsPaused(false);
+    setPendingPrompt(null);
     setPhase("idle");
+    // If we recorded any matches, show the standings overlay instead of
+    // silently going back to idle. The overlay clears `matches` on dismiss.
+    if (matches.length > 0 && teams) {
+      setStandingsTeams(teams);
+      setShowStandings(true);
+    }
+  }, [matches.length, teams]);
+
+  const recordOutcome = useCallback(
+    (outcome: Outcome) => {
+      haptic(15);
+      if (pendingPrompt) {
+        const recorded: MatchResult = {
+          round: pendingPrompt.round,
+          teams: pendingPrompt.teams,
+          outcome,
+        };
+        // Important: keep the two state updates *outside* each other's
+        // updater functions. React StrictMode double-invokes updaters to
+        // detect impurity, so calling `setMatches` from inside another
+        // updater would record the match twice.
+        setMatches((prev) => [...prev, recorded]);
+      }
+      setPendingPrompt(null);
+      // Resume the break timer (or, if no break, the freshly-started next
+      // round) using whatever time we captured when we paused.
+      if (pausedRemainingRef.current != null) {
+        endAtRef.current = Date.now() + pausedRemainingRef.current * 1000;
+        pausedRemainingRef.current = null;
+      }
+      setIsPaused(false);
+    },
+    [pendingPrompt]
+  );
+
+  const dismissStandings = useCallback(() => {
+    setShowStandings(false);
+    setStandingsTeams(null);
+    setMatches([]);
   }, []);
+
+  // If the user re-allocates teams (different colours / different player
+  // counts), any in-flight match history is no longer meaningful. Clear it
+  // so we don't mix stale results into the new session.
+  const teamsKey = useMemo(() => {
+    if (!teams) return "";
+    return teams
+      .map((t) => `${t.color}:${t.players.map((p) => p.id).join(",")}`)
+      .join("|");
+  }, [teams]);
+  useEffect(() => {
+    setMatches([]);
+    setPendingPrompt(null);
+  }, [teamsKey]);
 
   const togglePause = useCallback(() => {
     haptic(20);
@@ -298,8 +452,33 @@ export function Timer() {
         ? "RUNDE"
         : "PAUSE";
 
+  // Which match the indicator should describe.
+  //   - idle: preview round 1 so the user sees who'll start
+  //   - while the winner prompt is up: the round being asked about
+  //   - during a round: that round
+  //   - during the break (after the prompt is dismissed): the upcoming round
+  //     (the next pair coming on the ice)
+  const indicatorRound =
+    phase === "idle"
+      ? 1
+      : pendingPrompt
+        ? pendingPrompt.round
+        : phase === "break"
+          ? round + 1
+          : round;
+  const matchInfo = teams ? matchForRound(teams, indicatorRound) : null;
+
   return (
     <div>
+      {teams && matchInfo && (
+        <MatchIndicator
+          teams={teams}
+          playing={matchInfo.playing}
+          bench={matchInfo.bench}
+          round={indicatorRound}
+        />
+      )}
+
       <div
         className={`timer-display phase-${phase}${isPaused ? " paused" : ""}`}
         aria-live="polite"
@@ -383,6 +562,22 @@ export function Timer() {
           starter automatisk.
         </p>
       </div>
+
+      {pendingPrompt && teams && (
+        <WinnerPromptOverlay
+          teams={teams}
+          round={pendingPrompt.round}
+          playing={pendingPrompt.teams}
+          onSelect={recordOutcome}
+        />
+      )}
+      {showStandings && standingsTeams && (
+        <StandingsOverlay
+          teams={standingsTeams}
+          matches={matches}
+          onDismiss={dismissStandings}
+        />
+      )}
     </div>
   );
 }
