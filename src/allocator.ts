@@ -19,7 +19,7 @@ const TEAM_COLORS: TeamColor[] = ["red", "yellow", "blue"];
 const TEAM_LABEL: Record<TeamColor, string> = {
   red: "Rødt lag",
   yellow: "Gult lag",
-  blue: "Blå lag",
+  blue: "Blått lag",
 };
 
 /**
